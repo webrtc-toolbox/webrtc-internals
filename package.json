@@ -1,0 +1,17 @@
+{
+  "name": "webrtc-internals-safari",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "webrtc-internals in safari by stay",
+  "main": "src/index.js",
+  "author": "xsm",
+  "license": "MIT",
+  "repository": {},
+  "scripts": {
+    "build": "rollup --config"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "rollup": "^3.3.0"
+  }
+}
