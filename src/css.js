@@ -18,7 +18,6 @@ style.innerHTML = `
 
 .webrtc-internals-body{
   overflow-y: auto;
-  overflow-x: hidden;
   background: white;
   top: 0;
   width: 100%;
@@ -148,7 +147,6 @@ th {
 
 .tab-body {
   height: 100%;
-  overflow-x: hidden;
   overflow-y: auto;
   border: 1px solid turquoise;
   border-top-width: 3px;

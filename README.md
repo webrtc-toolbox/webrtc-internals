@@ -7,8 +7,9 @@
 2、适用于 safari/firefox/移动端，demo 集成方式，可以将其放置在 body 下, <script src="webrtc-internals.js"></script>，加在 body 下就可以了
 
 示例图片：
-![ios](./img/ios.jpg)
-![safari](./img/safari.jpg)
+![safari](./img/demo_1.jpg)
+![ios](./img/demo_2.jpg)
+![ios](./img/demo_3.jpg)
 
 # build
 

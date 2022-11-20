@@ -1020,7 +1020,7 @@ export function addPeerConnection(data) {
   p.style.wordBreak = "break-all";
   appendChildWithText(p, "span", data.url);
   appendChildWithText(p, "span", ", ");
-  appendChildWithText(p, "span", data.rtcConfiguration);
+  appendChildWithText(p, "span", JSON.stringify(data.rtcConfiguration));
   if (data.constraints !== "") {
     appendChildWithText(p, "span", ", ");
     appendChildWithText(p, "span", data.constraints);
