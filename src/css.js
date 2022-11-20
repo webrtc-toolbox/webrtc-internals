@@ -1,16 +1,48 @@
 const style = document.createElement("style");
 style.innerHTML = `
-/* Copyright (c) 2013 The Chromium Authors. All rights reserved.
-* Use of this source code is governed by a BSD-style license that can be
-* found in the LICENSE file. */
+/* Copyright 2013 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
 
-.webrtc-internals-content-root{
-  position: absolute;
+.webrtc-internals-body-out{
+  position: fixed;
   background: white;
   top: 0;
+  width: 100%;
+  left: 0;
+  height: 100%;
+  z-index: 10000;
   max-width: 100vw;
-  left:0;
+  min-height: 100vh;
 }
+
+.webrtc-internals-body{
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: white;
+  top: 0;
+  width: 100%;
+  left: 0;
+  height: 100%;
+  z-index: 10000;
+}
+
+.webrtc-internals-switch {
+  left: 0px; 
+  bottom: 0px; 
+  display: block;
+  position: fixed;
+  cursor: pointer;
+  color: #FFF;
+  background-color:  #07c160;
+  line-height: 1;
+  font-size: 0.8em;
+  padding: 0.61538462em 1.23076923em;
+  z-index: 10000;
+  border-radius: 0.30769231em;
+  box-shadow: 0 0 0.61538462em rgb(0 0 0 / 40%);
+}
+
 
 .peer-connection-dump-root {
   font-size: 0.8em;
@@ -57,11 +89,10 @@ style.innerHTML = `
 .stats-table-container {
   float: left;
   padding: 0 0 0 0;
-  width: 50em;
   overflow: auto;
 }
 
-.stats-table-container > div:first-child {
+.stats-table-container >div:first-child {
   font-size: 0.8em;
   font-weight: bold;
   text-align: center;
@@ -73,7 +104,7 @@ style.innerHTML = `
 }
 
 body {
-  font-family: "Lucida Grande", sans-serif;
+  font-family: 'Lucida Grande', sans-serif;
 }
 
 table {
@@ -116,6 +147,9 @@ th {
 }
 
 .tab-body {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid turquoise;
   border-top-width: 3px;
   padding: 0 10px 500px 10px;
@@ -139,19 +173,42 @@ th {
   max-width: 60em;
 }
 
-.webrtc-internals-switch {
-  left: 0px; 
-  bottom: 20px; 
-  display: block;
-  position: fixed;
-  cursor: pointer;
-  color: #FFF;
-  background-color:  #07c160;
-  line-height: 1;
-  font-size: 0.8em;
-  padding: 0.61538462em 1.23076923em;
-  z-index: 10000;
-  border-radius: 0.30769231em;
-  box-shadow: 0 0 0.61538462em rgb(0 0 0 / 40%);
+details[open] details summary {
+    background-color: rgb(220, 220, 220);
+}
+
+.peerconnection-deprecations {
+  font-weight: bold;
+}
+
+.candidategrid tr {
+    text-align: center;
+    word-break: break-word;
+}
+
+.candidategrid-active {
+  font-weight: bold;
+}
+
+.candidategrid-candidatepair {
+    background-color: #ccc;
+}
+
+.candidategrid-candidatepair td:first-of-type {
+    text-align: left;
+}
+
+.candidategrid-candidate {
+    background-color: #ddd;
+}
+
+.candidategrid-candidate td:first-of-type {
+    text-align: right;
+}
+
+#legacy-stats-warning {
+    display: none;
+}
+
 `;
 document.head.appendChild(style);

@@ -2,211 +2,53 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 import { $ } from "./utils";
+import { createWebUIEvents } from "./inject";
+import { PeerConnectionUpdateTable } from "./peer_connection_update_table";
+import {
+  DumpCreator,
+  peerConnectionDataStore,
+  userMediaRequests,
+} from "./dump_creator";
+import { TabView } from "./tab_view";
+import { SsrcInfoManager } from "./ssrc_info_manager";
+import { StatsTable } from "./stats_table";
+import { PeerConnectionRecord } from "./peer_connection_record";
+import { StatsRatesCalculator, StatsReport } from "./stats_rates_calculator.js";
+import {
+  createIceCandidateGrid,
+  updateIceCandidateGrid,
+} from "./candidate_grid.js";
+import {
+  drawSingleReport,
+  removeStatsReportGraphs,
+} from "./stats_graph_helper.js";
+import { getParameter } from "./config/config";
 
-var USER_MEDIA_TAB_ID = "user-media-tab-id";
+const USER_MEDIA_TAB_ID = "user-media-tab-id";
 
-var tabView = null;
-var ssrcInfoManager = null;
-var peerConnectionUpdateTable = null;
-var statsTable = null;
-var dumpCreator = null;
-/** A map from peer connection id to the PeerConnectionRecord. */
-var peerConnectionDataStore = {};
-/** A list of getUserMedia requests. */
-var userMediaRequests = [];
+const OPTION_GETSTATS_STANDARD = "Standardized (promise-based) getStats() API";
+const OPTION_GETSTATS_LEGACY =
+  "Legacy Non-Standard (callback-based) getStats() API";
+let currentGetStatsMethod = OPTION_GETSTATS_STANDARD;
 
-/** A simple class to store the updates and stats data for a peer connection. */
-var PeerConnectionRecord = (function () {
-  /** @constructor */
-  function PeerConnectionRecord() {
-    /** @private */
-    this.record_ = {
-      constraints: {},
-      rtcConfiguration: [],
-      stats: {},
-      updateLog: [],
-      url: "",
-    };
-  }
+let tabView = null;
+let ssrcInfoManager = null;
+let peerConnectionUpdateTable;
+let statsTable = null;
+let dumpCreator;
 
-  PeerConnectionRecord.prototype = {
-    /** @override */
-    toJSON: function () {
-      return this.record_;
-    },
+// Exporting these on window since they are directly accessed by tests.
+window.setCurrentGetStatsMethod = (method) => {
+  currentGetStatsMethod = method;
+};
+window.OPTION_GETSTATS_LEGACY = OPTION_GETSTATS_LEGACY;
 
-    /**
-     * Adds the initilization info of the peer connection.
-     * @param {string} url The URL of the web page owning the peer connection.
-     * @param {Array} rtcConfiguration
-     * @param {!Object} constraints Media constraints.
-     */
-    initialize: function (url, rtcConfiguration, constraints) {
-      this.record_.url = url;
-      this.record_.rtcConfiguration = rtcConfiguration;
-      this.record_.constraints = constraints;
-    },
-
-    /**
-     * @param {string} dataSeriesId The TimelineDataSeries identifier.
-     * @return {!TimelineDataSeries}
-     */
-    getDataSeries: function (dataSeriesId) {
-      return this.record_.stats[dataSeriesId];
-    },
-
-    /**
-     * @param {string} dataSeriesId The TimelineDataSeries identifier.
-     * @param {!TimelineDataSeries} dataSeries The TimelineDataSeries to set to.
-     */
-    setDataSeries: function (dataSeriesId, dataSeries) {
-      this.record_.stats[dataSeriesId] = dataSeries;
-    },
-
-    /**
-     * @param {!Object} update The object contains keys "time", "type", and
-     *   "value".
-     */
-    addUpdate: function (update) {
-      var time = new Date(parseFloat(update.time));
-      this.record_.updateLog.push({
-        time: time.toLocaleString(),
-        type: update.type,
-        value: update.value,
-      });
-    },
-  };
-
-  return PeerConnectionRecord;
-})();
+/** Maps from id (see getPeerConnectionId) to StatsRatesCalculator. */
+const statsRatesCalculatorById = new Map();
 
 // The maximum number of data points bufferred for each stats. Old data points
 // will be shifted out when the buffer is full.
 var MAX_STATS_DATA_POINT_BUFFER_SIZE = 1000;
-
-// // Copyright 2013 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
-/**
- * A TabView provides the ability to create tabs and switch between tabs. It's
- * responsible for creating the DOM and managing the visibility of each tab.
- * The first added tab is active by default and the others hidden.
- */
-var TabView = (function () {
-  "use strict";
-
-  /**
-   * @constructor
-   * @param {Element} root The root DOM element containing the tabs.
-   */
-  function TabView(root) {
-    this.root_ = root;
-    this.ACTIVE_TAB_HEAD_CLASS_ = "active-tab-head";
-    this.ACTIVE_TAB_BODY_CLASS_ = "active-tab-body";
-    this.TAB_HEAD_CLASS_ = "tab-head";
-    this.TAB_BODY_CLASS_ = "tab-body";
-
-    /**
-     * A mapping for an id to the tab elements.
-     * @type {!Object<!TabDom>}
-     * @private
-     */
-    this.tabElements_ = {};
-
-    this.headBar_ = null;
-    this.activeTabId_ = null;
-    this.initializeHeadBar_();
-  }
-
-  // Creates a simple object containing the tab head and body elements.
-  function TabDom(h, b) {
-    this.head = h;
-    this.body = b;
-  }
-
-  TabView.prototype = {
-    /**
-     * Adds a tab with the specified id and title.
-     * @param {string} id
-     * @param {string} title
-     * @return {!Element} The tab body element.
-     */
-    addTab: function (id, title) {
-      if (this.tabElements_[id]) throw "Tab already exists: " + id;
-
-      var head = document.createElement("span");
-      head.className = this.TAB_HEAD_CLASS_;
-      head.textContent = title;
-      head.title = title;
-      this.headBar_.appendChild(head);
-      head.addEventListener("click", this.switchTab_.bind(this, id));
-
-      var body = document.createElement("div");
-      body.className = this.TAB_BODY_CLASS_;
-      body.id = id;
-      this.root_.appendChild(body);
-
-      this.tabElements_[id] = new TabDom(head, body);
-
-      if (!this.activeTabId_) {
-        this.switchTab_(id);
-      }
-      return this.tabElements_[id].body;
-    },
-
-    /** Removes the tab. @param {string} id */
-    removeTab: function (id) {
-      if (!this.tabElements_[id]) return;
-      this.tabElements_[id].head.parentNode.removeChild(
-        this.tabElements_[id].head
-      );
-      this.tabElements_[id].body.parentNode.removeChild(
-        this.tabElements_[id].body
-      );
-
-      delete this.tabElements_[id];
-      if (this.activeTabId_ == id) {
-        this.switchTab_(Object.keys(this.tabElements_)[0]);
-      }
-    },
-
-    /**
-     * Switches the specified tab into view.
-     *
-     * @param {string} activeId The id the of the tab that should be switched to
-     *     active state.
-     * @private
-     */
-    switchTab_: function (activeId) {
-      if (this.activeTabId_ && this.tabElements_[this.activeTabId_]) {
-        this.tabElements_[this.activeTabId_].body.classList.remove(
-          this.ACTIVE_TAB_BODY_CLASS_
-        );
-        this.tabElements_[this.activeTabId_].head.classList.remove(
-          this.ACTIVE_TAB_HEAD_CLASS_
-        );
-      }
-      this.activeTabId_ = activeId;
-      if (this.tabElements_[activeId]) {
-        this.tabElements_[activeId].body.classList.add(
-          this.ACTIVE_TAB_BODY_CLASS_
-        );
-        this.tabElements_[activeId].head.classList.add(
-          this.ACTIVE_TAB_HEAD_CLASS_
-        );
-      }
-    },
-
-    /** Initializes the bar containing the tab heads. */
-    initializeHeadBar_: function () {
-      this.headBar_ = document.createElement("div");
-      this.root_.appendChild(this.headBar_);
-      this.headBar_.style.textAlign = "center";
-    },
-  };
-  return TabView;
-})();
 
 // // Copyright (c) 2013 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -382,133 +224,6 @@ function GetSsrcFromReport(report) {
   }
   return report.id;
 }
-
-/**
- * SsrcInfoManager stores the ssrc stream info extracted from SDP.
- */
-var SsrcInfoManager = (function () {
-  "use strict";
-
-  /**
-   * @constructor
-   */
-  function SsrcInfoManager() {
-    /**
-     * Map from ssrc id to an object containing all the stream properties.
-     * @type {!Object<!Object<string>>}
-     * @private
-     */
-    this.streamInfoContainer_ = {};
-
-    /**
-     * The string separating attibutes in an SDP.
-     * @type {string}
-     * @const
-     * @private
-     */
-    this.ATTRIBUTE_SEPARATOR_ = /[\r,\n]/;
-
-    /**
-     * The regex separating fields within an ssrc description.
-     * @type {RegExp}
-     * @const
-     * @private
-     */
-    this.FIELD_SEPARATOR_REGEX_ = / .*:/;
-
-    /**
-     * The prefix string of an ssrc description.
-     * @type {string}
-     * @const
-     * @private
-     */
-    this.SSRC_ATTRIBUTE_PREFIX_ = "a=ssrc:";
-
-    /**
-     * The className of the ssrc info parent element.
-     * @type {string}
-     * @const
-     */
-    this.SSRC_INFO_BLOCK_CLASS = "ssrc-info-block";
-  }
-
-  SsrcInfoManager.prototype = {
-    /**
-     * Extracts the stream information from |sdp| and saves it.
-     * For example:
-     *     a=ssrc:1234 msid:abcd
-     *     a=ssrc:1234 label:hello
-     *
-     * @param {string} sdp The SDP string.
-     */
-    addSsrcStreamInfo: function (sdp) {
-      var attributes = sdp.split(this.ATTRIBUTE_SEPARATOR_);
-      for (var i = 0; i < attributes.length; ++i) {
-        // Check if this is a ssrc attribute.
-        if (attributes[i].indexOf(this.SSRC_ATTRIBUTE_PREFIX_) != 0) continue;
-
-        var nextFieldIndex = attributes[i].search(this.FIELD_SEPARATOR_REGEX_);
-
-        if (nextFieldIndex == -1) continue;
-
-        var ssrc = attributes[i].substring(
-          this.SSRC_ATTRIBUTE_PREFIX_.length,
-          nextFieldIndex
-        );
-        if (!this.streamInfoContainer_[ssrc])
-          this.streamInfoContainer_[ssrc] = {};
-
-        // Make |rest| starting at the next field.
-        var rest = attributes[i].substring(nextFieldIndex + 1);
-        var name, value;
-        while (rest.length > 0) {
-          nextFieldIndex = rest.search(this.FIELD_SEPARATOR_REGEX_);
-          if (nextFieldIndex == -1) nextFieldIndex = rest.length;
-
-          // The field name is the string before the colon.
-          name = rest.substring(0, rest.indexOf(":"));
-          // The field value is from after the colon to the next field.
-          value = rest.substring(rest.indexOf(":") + 1, nextFieldIndex);
-          this.streamInfoContainer_[ssrc][name] = value;
-
-          // Move |rest| to the start of the next field.
-          rest = rest.substring(nextFieldIndex + 1);
-        }
-      }
-    },
-
-    /**
-     * @param {string} sdp The ssrc id.
-     * @return {!Object<string>} The object containing the ssrc infomation.
-     */
-    getStreamInfo: function (ssrc) {
-      return this.streamInfoContainer_[ssrc];
-    },
-
-    /**
-     * Populate the ssrc information into |parentElement|, each field as a
-     * DIV element.
-     *
-     * @param {!Element} parentElement The parent element for the ssrc info.
-     * @param {string} ssrc The ssrc id.
-     */
-    populateSsrcInfo: function (parentElement, ssrc) {
-      if (!this.streamInfoContainer_[ssrc]) return;
-
-      parentElement.className = this.SSRC_INFO_BLOCK_CLASS;
-
-      var fieldElement;
-      for (var property in this.streamInfoContainer_[ssrc]) {
-        fieldElement = document.createElement("div");
-        parentElement.appendChild(fieldElement);
-        fieldElement.textContent =
-          property + ":" + this.streamInfoContainer_[ssrc][property];
-      }
-    },
-  };
-
-  return SsrcInfoManager;
-})();
 
 // // Copyright (c) 2013 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -1130,210 +845,6 @@ var dataConversionConfig = {
   },
 };
 
-// The object contains the stats names that should not be added to the graph,
-// even if they are numbers.
-var statsNameBlackList = {
-  ssrc: true,
-  googTrackId: true,
-  googComponent: true,
-  googLocalAddress: true,
-  googRemoteAddress: true,
-  googFingerprint: true,
-};
-
-var graphViews = {};
-
-// Returns number parsed from |value|, or NaN if the stats name is black-listed.
-function getNumberFromValue(name, value) {
-  if (statsNameBlackList[name]) return NaN;
-  return parseFloat(value);
-}
-
-// Adds the stats report |report| to the timeline graph for the given
-// |peerConnectionElement|.
-function drawSingleReport(peerConnectionElement, report) {
-  var reportType = report.type;
-  var reportId = report.id;
-  var stats = report.stats;
-  if (!stats || !stats.values) return;
-
-  for (var i = 0; i < stats.values.length - 1; i = i + 2) {
-    var rawLabel = stats.values[i];
-    // Propagation deltas are handled separately.
-    if (rawLabel == RECEIVED_PROPAGATION_DELTA_LABEL) {
-      drawReceivedPropagationDelta(
-        peerConnectionElement,
-        report,
-        stats.values[i + 1]
-      );
-      continue;
-    }
-    var rawDataSeriesId = reportId + "-" + rawLabel;
-    var rawValue = getNumberFromValue(rawLabel, stats.values[i + 1]);
-    if (isNaN(rawValue)) {
-      // We do not draw non-numerical values, but still want to record it in the
-      // data series.
-      addDataSeriesPoints(
-        peerConnectionElement,
-        rawDataSeriesId,
-        rawLabel,
-        [stats.timestamp],
-        [stats.values[i + 1]]
-      );
-      continue;
-    }
-
-    var finalDataSeriesId = rawDataSeriesId;
-    var finalLabel = rawLabel;
-    var finalValue = rawValue;
-    // We need to convert the value if dataConversionConfig[rawLabel] exists.
-    if (dataConversionConfig[rawLabel]) {
-      // Updates the original dataSeries before the conversion.
-      addDataSeriesPoints(
-        peerConnectionElement,
-        rawDataSeriesId,
-        rawLabel,
-        [stats.timestamp],
-        [rawValue]
-      );
-
-      // Convert to another value to draw on graph, using the original
-      // dataSeries as input.
-      finalValue = dataConversionConfig[rawLabel].convertFunction(
-        peerConnectionDataStore[peerConnectionElement.id].getDataSeries(
-          rawDataSeriesId
-        )
-      );
-      finalLabel = dataConversionConfig[rawLabel].convertedName;
-      finalDataSeriesId = reportId + "-" + finalLabel;
-    }
-
-    // Updates the final dataSeries to draw.
-    addDataSeriesPoints(
-      peerConnectionElement,
-      finalDataSeriesId,
-      finalLabel,
-      [stats.timestamp],
-      [finalValue]
-    );
-
-    // Updates the graph.
-    var graphType = bweCompoundGraphConfig[finalLabel]
-      ? "bweCompound"
-      : finalLabel;
-    var graphViewId =
-      peerConnectionElement.id + "-" + reportId + "-" + graphType;
-
-    if (!graphViews[graphViewId]) {
-      graphViews[graphViewId] = createStatsGraphView(
-        peerConnectionElement,
-        report,
-        graphType
-      );
-      var date = new Date(stats.timestamp);
-      graphViews[graphViewId].setDateRange(date, date);
-    }
-    // Adds the new dataSeries to the graphView. We have to do it here to cover
-    // both the simple and compound graph cases.
-    var dataSeries =
-      peerConnectionDataStore[peerConnectionElement.id].getDataSeries(
-        finalDataSeriesId
-      );
-    if (!graphViews[graphViewId].hasDataSeries(dataSeries))
-      graphViews[graphViewId].addDataSeries(dataSeries);
-    graphViews[graphViewId].updateEndDate();
-  }
-}
-
-// Makes sure the TimelineDataSeries with id |dataSeriesId| is created,
-// and adds the new data points to it. |times| is the list of timestamps for
-// each data point, and |values| is the list of the data point values.
-function addDataSeriesPoints(
-  peerConnectionElement,
-  dataSeriesId,
-  label,
-  times,
-  values
-) {
-  var dataSeries =
-    peerConnectionDataStore[peerConnectionElement.id].getDataSeries(
-      dataSeriesId
-    );
-  if (!dataSeries) {
-    dataSeries = new TimelineDataSeries();
-    peerConnectionDataStore[peerConnectionElement.id].setDataSeries(
-      dataSeriesId,
-      dataSeries
-    );
-    if (bweCompoundGraphConfig[label]) {
-      dataSeries.setColor(bweCompoundGraphConfig[label].color);
-    }
-  }
-  for (var i = 0; i < times.length; ++i)
-    dataSeries.addPoint(times[i], values[i]);
-}
-
-// Draws the received propagation deltas using the packet group arrival time as
-// the x-axis. For example, |report.stats.values| should be like
-// ['googReceivedPacketGroupArrivalTimeDebug', '[123456, 234455, 344566]',
-//  'googReceivedPacketGroupPropagationDeltaDebug', '[23, 45, 56]', ...].
-function drawReceivedPropagationDelta(peerConnectionElement, report, deltas) {
-  var reportId = report.id;
-  var stats = report.stats;
-  var times = null;
-  // Find the packet group arrival times.
-  for (var i = 0; i < stats.values.length - 1; i = i + 2) {
-    if (stats.values[i] == RECEIVED_PACKET_GROUP_ARRIVAL_TIME_LABEL) {
-      times = stats.values[i + 1];
-      break;
-    }
-  }
-  // Unexpected.
-  if (times == null) return;
-
-  // Convert |deltas| and |times| from strings to arrays of numbers.
-  try {
-    deltas = JSON.parse(deltas);
-    times = JSON.parse(times);
-  } catch (e) {
-    console.log(e);
-    return;
-  }
-
-  // Update the data series.
-  var dataSeriesId = reportId + "-" + RECEIVED_PROPAGATION_DELTA_LABEL;
-  addDataSeriesPoints(
-    peerConnectionElement,
-    dataSeriesId,
-    RECEIVED_PROPAGATION_DELTA_LABEL,
-    times,
-    deltas
-  );
-  // Update the graph.
-  var graphViewId =
-    peerConnectionElement.id +
-    "-" +
-    reportId +
-    "-" +
-    RECEIVED_PROPAGATION_DELTA_LABEL;
-  var date = new Date(times[times.length - 1]);
-  if (!graphViews[graphViewId]) {
-    graphViews[graphViewId] = createStatsGraphView(
-      peerConnectionElement,
-      report,
-      RECEIVED_PROPAGATION_DELTA_LABEL
-    );
-    graphViews[graphViewId].setScale(10);
-    graphViews[graphViewId].setDateRange(date, date);
-    var dataSeries =
-      peerConnectionDataStore[peerConnectionElement.id].getDataSeries(
-        dataSeriesId
-      );
-    graphViews[graphViewId].addDataSeries(dataSeries);
-  }
-  graphViews[graphViewId].updateEndDate(date);
-}
-
 // Get report types for SSRC reports. Returns 'audio' or 'video' where this type
 // can be deduced from existing stats labels. Otherwise empty string for
 // non-SSRC reports or where type (audio/video) can't be deduced.
@@ -1360,594 +871,53 @@ function getSsrcReportType(report) {
   return "";
 }
 
-// Ensures a div container to hold all stats graphs for one track is created as
-// a child of |peerConnectionElement|.
-function ensureStatsGraphTopContainer(peerConnectionElement, report) {
-  var containerId =
-    peerConnectionElement.id +
-    "-" +
-    report.type +
-    "-" +
-    report.id +
-    "-graph-container";
-  var container = $(containerId);
-  if (!container) {
-    container = document.createElement("details");
-    container.id = containerId;
-    container.className = "stats-graph-container";
-
-    peerConnectionElement.appendChild(container);
-    container.innerHTML = "<summary><span></span></summary>";
-    container.firstChild.firstChild.className =
-      STATS_GRAPH_CONTAINER_HEADING_CLASS;
-    container.firstChild.firstChild.textContent =
-      "Stats graphs for " + report.id + " (" + report.type + ")";
-    var statsType = getSsrcReportType(report);
-    if (statsType != "")
-      container.firstChild.firstChild.textContent += " (" + statsType + ")";
-
-    if (report.type == "ssrc") {
-      var ssrcInfoElement = document.createElement("div");
-      container.firstChild.appendChild(ssrcInfoElement);
-      ssrcInfoManager.populateSsrcInfo(
-        ssrcInfoElement,
-        GetSsrcFromReport(report)
-      );
-    }
-  }
-  return container;
-}
-
-// Creates the container elements holding a timeline graph
-// and the TimelineGraphView object.
-function createStatsGraphView(peerConnectionElement, report, statsName) {
-  var topContainer = ensureStatsGraphTopContainer(
-    peerConnectionElement,
-    report
-  );
-
-  var graphViewId =
-    peerConnectionElement.id + "-" + report.id + "-" + statsName;
-  var divId = graphViewId + "-div";
-  var canvasId = graphViewId + "-canvas";
-  var container = document.createElement("div");
-  container.className = "stats-graph-sub-container";
-
-  topContainer.appendChild(container);
-  container.innerHTML =
-    "<div>" +
-    statsName +
-    "</div>" +
-    "<div id=" +
-    divId +
-    "><canvas id=" +
-    canvasId +
-    "></canvas></div>";
-  if (statsName == "bweCompound") {
-    container.insertBefore(
-      createBweCompoundLegend(peerConnectionElement, report.id),
-      $(divId)
-    );
-  }
-  return new TimelineGraphView(divId, canvasId);
-}
-
-// Creates the legend section for the bweCompound graph.
-// Returns the legend element.
-function createBweCompoundLegend(peerConnectionElement, reportId) {
-  var legend = document.createElement("div");
-  for (var prop in bweCompoundGraphConfig) {
-    var div = document.createElement("div");
-    legend.appendChild(div);
-    div.innerHTML = "<input type=checkbox checked></input>" + prop;
-    div.style.color = bweCompoundGraphConfig[prop].color;
-    div.dataSeriesId = reportId + "-" + prop;
-    div.graphViewId =
-      peerConnectionElement.id + "-" + reportId + "-bweCompound";
-    div.firstChild.addEventListener("click", function (event) {
-      var target = peerConnectionDataStore[
-        peerConnectionElement.id
-      ].getDataSeries(event.target.parentNode.dataSeriesId);
-      target.show(event.target.checked);
-      graphViews[event.target.parentNode.graphViewId].repaint();
-    });
-  }
-  return legend;
-}
-
 // // Copyright (c) 2013 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-
-/**
- * Maintains the stats table.
- * @param {SsrcInfoManager} ssrcInfoManager The source of the ssrc info.
- */
-var StatsTable = (function (ssrcInfoManager) {
-  "use strict";
-
-  /**
-   * @param {SsrcInfoManager} ssrcInfoManager The source of the ssrc info.
-   * @constructor
-   */
-  function StatsTable(ssrcInfoManager) {
-    /**
-     * @type {SsrcInfoManager}
-     * @private
-     */
-    this.ssrcInfoManager_ = ssrcInfoManager;
-  }
-
-  StatsTable.prototype = {
-    /**
-     * Adds |report| to the stats table of |peerConnectionElement|.
-     *
-     * @param {!Element} peerConnectionElement The root element.
-     * @param {!Object} report The object containing stats, which is the object
-     *     containing timestamp and values, which is an array of strings, whose
-     *     even index entry is the name of the stat, and the odd index entry is
-     *     the value.
-     */
-    addStatsReport: function (peerConnectionElement, report) {
-      var statsTable = this.ensureStatsTable_(peerConnectionElement, report);
-
-      if (report.stats) {
-        this.addStatsToTable_(
-          statsTable,
-          report.stats.timestamp,
-          report.stats.values
-        );
-      }
-    },
-
-    /**
-     * Ensure the DIV container for the stats tables is created as a child of
-     * |peerConnectionElement|.
-     *
-     * @param {!Element} peerConnectionElement The root element.
-     * @return {!Element} The stats table container.
-     * @private
-     */
-    ensureStatsTableContainer_: function (peerConnectionElement) {
-      var containerId = peerConnectionElement.id + "-table-container";
-      var container = $(containerId);
-      if (!container) {
-        container = document.createElement("div");
-        container.id = containerId;
-        container.className = "stats-table-container";
-        var head = document.createElement("div");
-        head.textContent = "Stats Tables";
-        container.appendChild(head);
-        peerConnectionElement.appendChild(container);
-      }
-      return container;
-    },
-
-    /**
-     * Ensure the stats table for track specified by |report| of PeerConnection
-     * |peerConnectionElement| is created.
-     *
-     * @param {!Element} peerConnectionElement The root element.
-     * @param {!Object} report The object containing stats, which is the object
-     *     containing timestamp and values, which is an array of strings, whose
-     *     even index entry is the name of the stat, and the odd index entry is
-     *     the value.
-     * @return {!Element} The stats table element.
-     * @private
-     */
-    ensureStatsTable_: function (peerConnectionElement, report) {
-      var tableId = peerConnectionElement.id + "-table-" + report.id;
-      var table = $(tableId);
-      if (!table) {
-        var container = this.ensureStatsTableContainer_(peerConnectionElement);
-        var details = document.createElement("details");
-        container.appendChild(details);
-
-        var summary = document.createElement("summary");
-        summary.textContent = report.id + " (" + report.type + ")";
-        details.appendChild(summary);
-
-        table = document.createElement("table");
-        details.appendChild(table);
-        table.id = tableId;
-        table.border = 1;
-
-        table.innerHTML = "<tr><th colspan=2></th></tr>";
-        table.rows[0].cells[0].textContent = "Statistics " + report.id;
-        if (report.type == "ssrc") {
-          table.insertRow(1);
-          table.rows[1].innerHTML = "<td colspan=2></td>";
-          this.ssrcInfoManager_.populateSsrcInfo(
-            table.rows[1].cells[0],
-            GetSsrcFromReport(report)
-          );
-        }
-      }
-      return table;
-    },
-
-    /**
-     * Update |statsTable| with |time| and |statsData|.
-     *
-     * @param {!Element} statsTable Which table to update.
-     * @param {number} time The number of miliseconds since epoch.
-     * @param {Array<string>} statsData An array of stats name and value pairs.
-     * @private
-     */
-    addStatsToTable_: function (statsTable, time, statsData) {
-      var date = new Date(time);
-      this.updateStatsTableRow_(statsTable, "timestamp", date.toLocaleString());
-      for (var i = 0; i < statsData.length - 1; i = i + 2) {
-        this.updateStatsTableRow_(statsTable, statsData[i], statsData[i + 1]);
-      }
-    },
-
-    /**
-     * Update the value column of the stats row of |rowName| to |value|.
-     * A new row is created is this is the first report of this stats.
-     *
-     * @param {!Element} statsTable Which table to update.
-     * @param {string} rowName The name of the row to update.
-     * @param {string} value The new value to set.
-     * @private
-     */
-    updateStatsTableRow_: function (statsTable, rowName, value) {
-      var trId = statsTable.id + "-" + rowName;
-      var trElement = $(trId);
-      if (!trElement) {
-        trElement = document.createElement("tr");
-        trElement.id = trId;
-        statsTable.firstChild.appendChild(trElement);
-        trElement.innerHTML = "<td>" + rowName + "</td><td></td>";
-      }
-      trElement.cells[1].textContent = value;
-
-      // Highlights the table for the active connection.
-      if (rowName == "googActiveConnection" && value == true)
-        statsTable.parentElement.classList.add("stats-table-active-connection");
-    },
-  };
-
-  return StatsTable;
-})();
-
-// // Copyright (c) 2013 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
-/**
- * The data of a peer connection update.
- * @param {number} pid The id of the renderer.
- * @param {number} lid The id of the peer conneciton inside a renderer.
- * @param {string} type The type of the update.
- * @param {string} value The details of the update.
- * @constructor
- */
-var PeerConnectionUpdateEntry = function (pid, lid, type, value) {
-  /**
-   * @type {number}
-   */
-  this.pid = pid;
-
-  /**
-   * @type {number}
-   */
-  this.lid = lid;
-
-  /**
-   * @type {string}
-   */
-  this.type = type;
-
-  /**
-   * @type {string}
-   */
-  this.value = value;
-};
-
-/**
- * Maintains the peer connection update log table.
- */
-var PeerConnectionUpdateTable = (function () {
-  "use strict";
-
-  /**
-   * @constructor
-   */
-  function PeerConnectionUpdateTable() {
-    /**
-     * @type {string}
-     * @const
-     * @private
-     */
-    this.UPDATE_LOG_ID_SUFFIX_ = "-update-log";
-
-    /**
-     * @type {string}
-     * @const
-     * @private
-     */
-    this.UPDATE_LOG_CONTAINER_CLASS_ = "update-log-container";
-
-    /**
-     * @type {string}
-     * @const
-     * @private
-     */
-    this.UPDATE_LOG_TABLE_CLASS = "update-log-table";
-  }
-
-  PeerConnectionUpdateTable.prototype = {
-    /**
-     * Adds the update to the update table as a new row. The type of the update
-     * is set to the summary of the cell; clicking the cell will reveal or hide
-     * the details as the content of a TextArea element.
-     *
-     * @param {!Element} peerConnectionElement The root element.
-     * @param {!PeerConnectionUpdateEntry} update The update to add.
-     */
-    addPeerConnectionUpdate: function (peerConnectionElement, update) {
-      var tableElement = this.ensureUpdateContainer_(peerConnectionElement);
-
-      var row = document.createElement("tr");
-      tableElement.firstChild.appendChild(row);
-
-      var time = new Date(parseFloat(update.time));
-      row.innerHTML = "<td>" + time.toLocaleString() + "</td>";
-
-      // map internal event names to spec event names.
-      var type =
-        {
-          onRenegotiationNeeded: "negotiationneeded",
-          signalingStateChange: "signalingstatechange",
-          iceGatheringStateChange: "icegatheringstatechange",
-          iceConnectionStateChange: "iceconnectionstatechange",
-          onIceCandidate: "icecandidate",
-          stop: "close",
-        }[update.type] || update.type;
-
-      if (update.value && update.value.length && update.value.length == 0) {
-        row.innerHTML += "<td>" + type + "</td>";
-        return;
-      }
-
-      if (
-        update.type === "onIceCandidate" ||
-        update.type === "addIceCandidate"
-      ) {
-        // extract ICE candidate type from the field following typ.
-        var candidateType = update.value.match(/(?: typ )(host|srflx|relay)/);
-        if (candidateType) {
-          type += " (" + candidateType[1] + ")";
-        }
-      }
-      row.innerHTML +=
-        "<td><details><summary>" + type + "</summary></details></td>";
-
-      var valueContainer = document.createElement("pre");
-      var details = row.cells[1].childNodes[0];
-      details.appendChild(valueContainer);
-
-      // Highlight ICE failures and failure callbacks.
-      if (
-        (update.type === "iceConnectionStateChange" &&
-          update.value === "ICEConnectionStateFailed") ||
-        update.type.indexOf("OnFailure") !== -1 ||
-        update.type === "addIceCandidateFailed"
-      ) {
-        valueContainer.parentElement.classList.add("update-log-failure");
-      }
-
-      // Point out legacy addStream/removeStream APIs.
-      if (update.type === "addStream" || update.type === "removeStream") {
-        valueContainer.parentElement.classList.add(
-          "update-log-legacy-api-usage"
-        );
-        valueContainer.parentElement.title =
-          update.type +
-          " is no longer " +
-          "part of the WebRTC API and may be removed in future versions. " +
-          "Use the addTrack/removeTrack APIs instead.";
-      }
-
-      var value = update.value;
-      // map internal names and values to names and events from the
-      // specification. This is a display change which shall not
-      // change the JSON dump.
-      if (update.type === "iceConnectionStateChange") {
-        value =
-          {
-            ICEConnectionStateNew: "new",
-            ICEConnectionStateChecking: "checking",
-            ICEConnectionStateConnected: "connected",
-            ICEConnectionStateCompleted: "completed",
-            ICEConnectionStateFailed: "failed",
-            ICEConnectionStateDisconnected: "disconnected",
-            ICEConnectionStateClosed: "closed",
-          }[value] || value;
-      } else if (update.type === "iceGatheringStateChange") {
-        value =
-          {
-            ICEGatheringStateNew: "new",
-            ICEGatheringStateGathering: "gathering",
-            ICEGatheringStateComplete: "complete",
-          }[value] || value;
-      } else if (update.type === "signalingStateChange") {
-        value =
-          {
-            SignalingStateStable: "stable",
-            SignalingStateHaveLocalOffer: "have-local-offer",
-            SignalingStateHaveRemoteOffer: "have-remote-offer",
-            SignalingStateHaveLocalPrAnswer: "have-local-pranswer",
-            SignalingStateHaveRemotePrAnswer: "have-remote-pranswer",
-            SignalingStateClosed: "closed",
-          }[value] || value;
-      }
-
-      valueContainer.textContent = value;
-    },
-
-    /**
-     * Makes sure the update log table of the peer connection is created.
-     *
-     * @param {!Element} peerConnectionElement The root element.
-     * @return {!Element} The log table element.
-     * @private
-     */
-    ensureUpdateContainer_: function (peerConnectionElement) {
-      var tableId = peerConnectionElement.id + this.UPDATE_LOG_ID_SUFFIX_;
-      var tableElement = $(tableId);
-      if (!tableElement) {
-        var tableContainer = document.createElement("div");
-        tableContainer.className = this.UPDATE_LOG_CONTAINER_CLASS_;
-        peerConnectionElement.appendChild(tableContainer);
-
-        tableElement = document.createElement("table");
-        tableElement.className = this.UPDATE_LOG_TABLE_CLASS;
-        tableElement.id = tableId;
-        tableElement.border = 1;
-        tableContainer.appendChild(tableElement);
-        tableElement.innerHTML =
-          "<tr><th>Time</th>" +
-          '<th class="update-log-header-event">Event</th></tr>';
-      }
-      return tableElement;
-    },
-  };
-
-  return PeerConnectionUpdateTable;
-})();
-
-// // Copyright (c) 2013 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
-/**
- * Provides the UI for dump creation.
- */
-var DumpCreator = (function () {
-  /**
-   * @param {Element} containerElement The parent element of the dump creation
-   *     UI.
-   * @constructor
-   */
-  function DumpCreator(containerElement) {
-    /**
-     * The root element of the dump creation UI.
-     * @type {Element}
-     * @private
-     */
-    this.root_ = document.createElement("details");
-
-    this.root_.className = "peer-connection-dump-root";
-    containerElement.appendChild(this.root_);
-    var summary = document.createElement("summary");
-    this.root_.appendChild(summary);
-    summary.textContent = "Create Dump";
-    var content = document.createElement("div");
-    this.root_.appendChild(content);
-
-    content.innerHTML =
-      "<div><a><button>" +
-      "Download the PeerConnection updates and stats data" +
-      "</button></a></div>";
-    content
-      .getElementsByTagName("a")[0]
-      .addEventListener("click", this.onDownloadData_.bind(this));
-  }
-
-  DumpCreator.prototype = {
-    // Mark the diagnostic audio recording checkbox checked.
-    enableAudioDebugRecordings: function () {
-      this.root_.getElementsByTagName("input")[0].checked = true;
-    },
-
-    // Mark the diagnostic audio recording checkbox unchecked.
-    disableAudioDebugRecordings: function () {
-      this.root_.getElementsByTagName("input")[0].checked = false;
-    },
-
-    // Mark the event log recording checkbox checked.
-    enableEventLogRecordings: function () {
-      this.root_.getElementsByTagName("input")[1].checked = true;
-    },
-
-    // Mark the event log recording checkbox unchecked.
-    disableEventLogRecordings: function () {
-      this.root_.getElementsByTagName("input")[1].checked = false;
-    },
-
-    /**
-     * Downloads the PeerConnection updates and stats data as a file.
-     *
-     * @private
-     */
-    onDownloadData_: function () {
-      var dump_object = {
-        getUserMedia: userMediaRequests,
-        PeerConnections: peerConnectionDataStore,
-        UserAgent: navigator.userAgent,
-      };
-      var textBlob = new Blob([JSON.stringify(dump_object, null, " ")], {
-        type: "octet/stream",
-      });
-      var URL = window.URL.createObjectURL(textBlob);
-
-      var anchor = this.root_.getElementsByTagName("a")[0];
-      anchor.href = URL;
-      anchor.download = "webrtc_internals_dump.txt";
-      // The default action of the anchor will download the URL.
-    },
-
-    /**
-     * Handles the event of toggling the audio debug recordings state.
-     *
-     * @private
-     */
-    onAudioDebugRecordingsChanged_: function () {
-      var enabled = this.root_.getElementsByTagName("input")[0].checked;
-      if (enabled) {
-        // chrome.send('enableAudioDebugRecordings');
-      } else {
-        // chrome.send('disableAudioDebugRecordings');
-      }
-    },
-
-    /**
-     * Handles the event of toggling the event log recordings state.
-     *
-     * @private
-     */
-    onEventLogRecordingsChanged_: function () {
-      var enabled = this.root_.getElementsByTagName("input")[1].checked;
-      if (enabled) {
-        // chrome.send('enableEventLogRecordings');
-      } else {
-        // chrome.send('disableEventLogRecordings');
-      }
-    },
-  };
-  return DumpCreator;
-})();
 
 export function initialize() {
-  dumpCreator = new DumpCreator($("content-root"));
-  tabView = new TabView($("content-root"));
+  const root = $("content-root");
+  if (root === null) {
+    return;
+  }
+  dumpCreator = new DumpCreator(root);
+  root.appendChild(createStatsSelectionOptionElements());
+  tabView = new TabView(root);
   ssrcInfoManager = new SsrcInfoManager();
   peerConnectionUpdateTable = new PeerConnectionUpdateTable();
   statsTable = new StatsTable(ssrcInfoManager);
 
-  // chrome.send('finishedDOMLoad');
-
-  // Requests stats from all peer connections every second.
-  window.setInterval(requestStats, 1000);
+  createWebUIEvents();
 }
 
-/** Sends a request to the browser to get peer connection statistics. */
-function requestStats() {
-  if (Object.keys(peerConnectionDataStore).length > 0) {
-    // chrome.send('getAllStats');
-  }
+function createStatsSelectionOptionElements() {
+  const statsElement = $("stats-template").content.cloneNode(true);
+  const selectElement = statsElement.getElementById("statsSelectElement");
+  const legacyStatsElement = statsElement.getElementById(
+    "legacy-stats-warning"
+  );
+  selectElement.onchange = () => {
+    currentGetStatsMethod = selectElement.value;
+    legacyStatsElement.style.display =
+      currentGetStatsMethod === OPTION_GETSTATS_LEGACY ? "block" : "none";
+    Object.keys(peerConnectionDataStore).forEach((id) => {
+      const peerConnectionElement = $(id);
+      statsTable.clearStatsLists(peerConnectionElement);
+      removeStatsReportGraphs(peerConnectionElement);
+      peerConnectionDataStore[id].resetStats();
+    });
+  };
+
+  // 暂时不支持OPTION_GETSTATS_LEGACY to do @xiaoshumin
+  [OPTION_GETSTATS_STANDARD].forEach((option) => {
+    const optionElement = document.createElement("option");
+    optionElement.setAttribute("value", option);
+    optionElement.appendChild(document.createTextNode(option));
+    selectElement.appendChild(optionElement);
+  });
+
+  selectElement.value = currentGetStatsMethod;
+  return statsElement;
 }
 
 /**
@@ -2028,59 +998,91 @@ function removePeerConnection(data) {
  *     rtcConfiguration, and constraints of a peer connection.
  */
 export function addPeerConnection(data) {
-  var id = getPeerConnectionId(data);
+  const id = getPeerConnectionId(data);
 
   if (!peerConnectionDataStore[id]) {
     peerConnectionDataStore[id] = new PeerConnectionRecord();
   }
   peerConnectionDataStore[id].initialize(
+    data.pid,
     data.url,
     data.rtcConfiguration,
     data.constraints
   );
 
-  var peerConnectionElement = $(id);
+  let peerConnectionElement = $(id);
   if (!peerConnectionElement) {
-    peerConnectionElement = tabView.addTab(id, data.url + " [" + id + "]");
+    const details = `[ rid: ${data.rid}, lid: ${data.lid}, pid: ${data.pid} ]`;
+    peerConnectionElement = tabView.addTab(id, data.url + " " + details);
   }
 
-  var p = document.createElement("p");
+  const p = document.createElement("p");
   p.style.wordBreak = "break-all";
-  p.textContent =
-    data.url + ", " + data.rtcConfiguration + ", " + data.constraints;
+  appendChildWithText(p, "span", data.url);
+  appendChildWithText(p, "span", ", ");
+  appendChildWithText(p, "span", data.rtcConfiguration);
+  if (data.constraints !== "") {
+    appendChildWithText(p, "span", ", ");
+    appendChildWithText(p, "span", data.constraints);
+  }
   peerConnectionElement.appendChild(p);
 
-  return peerConnectionElement;
-}
-
-/**
- * Adds a peer connection update.
- *
- * @param {!PeerConnectionUpdateEntry} data The peer connection update data.
- */
-function updatePeerConnection(data) {
-  var peerConnectionElement = $(getPeerConnectionId(data));
-  addPeerConnectionUpdate(peerConnectionElement, data);
-}
-
-/**
- * Adds the information of all peer connections created so far.
- *
- * @param {Array<!Object>} data An array of the information of all peer
- *     connections. Each array item contains pid, lid, url, rtcConfiguration,
- *     constraints, and an array of updates as the log.
- */
-function updateAllPeerConnections(data) {
-  for (var i = 0; i < data.length; ++i) {
-    var peerConnection = addPeerConnection(data[i]);
-
-    var log = data[i].log;
-    if (!log) continue;
-    for (var j = 0; j < log.length; ++j) {
-      addPeerConnectionUpdate(peerConnection, log[j]);
+  // Show deprecation notices as a list.
+  // Note: data.rtcConfiguration is not in JSON format and may
+  // not be defined in tests.
+  const deprecationNotices = document.createElement("ul");
+  if (data.rtcConfiguration) {
+    deprecationNotices.className = "peerconnection-deprecations";
+  }
+  if (data.constraints) {
+    if (data.constraints.indexOf("enableDtlsSrtp:") !== -1) {
+      if (data.constraints.indexOf("enableDtlsSrtp: {exact: false}") !== -1) {
+        appendChildWithText(
+          deprecationNotices,
+          "li",
+          'The constraint "DtlsSrtpKeyAgreement" will be removed. You have ' +
+            'specified a "false" value for this constraint, which is ' +
+            'interpreted as an attempt to use the deprecated "SDES" key ' +
+            "negotiation method. This functionality will be removed; use a " +
+            "service that supports DTLS key negotiation instead."
+        );
+      } else {
+        appendChildWithText(
+          deprecationNotices,
+          "li",
+          'The constraint "DtlsSrtpKeyAgreement" will be removed. You have ' +
+            'specified a "true" value for this constraint, which has no ' +
+            "effect, but you can remove this constraint for tidiness."
+        );
+      }
     }
   }
-  requestStats();
+  peerConnectionElement.appendChild(deprecationNotices);
+
+  const iceConnectionStates = document.createElement("div");
+  iceConnectionStates.textContent = "ICE connection state: new";
+  iceConnectionStates.className = "iceconnectionstate";
+  peerConnectionElement.appendChild(iceConnectionStates);
+
+  const connectionStates = document.createElement("div");
+  connectionStates.textContent = "Connection state: new";
+  connectionStates.className = "connectionstate";
+  peerConnectionElement.appendChild(connectionStates);
+
+  const signalingStates = document.createElement("div");
+  signalingStates.textContent = "Signaling state: new";
+  signalingStates.className = "signalingstate";
+  peerConnectionElement.appendChild(signalingStates);
+
+  const candidatePair = document.createElement("div");
+  candidatePair.textContent = "ICE Candidate pair: ";
+  candidatePair.className = "candidatepair";
+  candidatePair.appendChild(document.createElement("span"));
+  peerConnectionElement.appendChild(candidatePair);
+
+  createIceCandidateGrid(peerConnectionElement);
+
+  return peerConnectionElement;
 }
 
 /**
@@ -2093,22 +1095,173 @@ function updateAllPeerConnections(data) {
  *     stat, and the odd index entry is the value.
  */
 export function addStats(data) {
-  var peerConnectionElement = $(getPeerConnectionId(data));
+  const peerConnectionElement = $(getPeerConnectionId(data));
   if (!peerConnectionElement) return;
 
   for (var i = 0; i < data.reports.length; ++i) {
-    var report = data.reports[i];
-    statsTable.addStatsReport(peerConnectionElement, report);
-    switch (report.type) {
-      case "codec":
-      case "certificate":
-      case "local-candidate":
-      case "remote-candidate":
-        // some report types have no useful data to display as graphs.
-        break;
-      default:
-        drawSingleReport(peerConnectionElement, report);
+    if (currentGetStatsMethod === OPTION_GETSTATS_STANDARD) {
+      addStandardStats(data);
+    } else {
+      addLegacyStats(data);
     }
+  }
+}
+
+/**
+ * Handles the report of stats originating from the standard getStats() API.
+ *
+ * @param {!Object} data The object containing rid, lid, and reports, where
+ *     reports is an array of stats reports. Each report contains id, type,
+ *     and stats, where stats is the object containing timestamp and values,
+ *     which is an array of strings, whose even index entry is the name of the
+ *     stat, and the odd index entry is the value.
+ */
+function addStandardStats(data) {
+  if (currentGetStatsMethod != OPTION_GETSTATS_STANDARD) {
+    return; // Obsolete!
+  }
+  const peerConnectionElement = $(getPeerConnectionId(data));
+  if (!peerConnectionElement) {
+    return;
+  }
+  const pcId = getPeerConnectionId(data);
+  let statsRatesCalculator = statsRatesCalculatorById.get(pcId);
+  if (!statsRatesCalculator) {
+    statsRatesCalculator = new StatsRatesCalculator();
+    statsRatesCalculatorById.set(pcId, statsRatesCalculator);
+  }
+  const r = StatsReport.fromInternalsReportList(data.reports);
+  statsRatesCalculator.addStatsReport(r);
+  data.reports = statsRatesCalculator.currentReport.toInternalsReportList();
+  for (let i = 0; i < data.reports.length; ++i) {
+    const report = data.reports[i];
+    statsTable.addStatsReport(peerConnectionElement, report);
+    if (getParameter("open_graph")) {
+      drawSingleReport(peerConnectionElement, report, false);
+    }
+  }
+  // Determine currently connected candidate pair.
+  const stats = r.statsById;
+
+  let activeCandidatePair = null;
+  let remoteCandidate = null;
+  let localCandidate = null;
+
+  // Get the first active candidate pair. This ignores the rare case of
+  // non-bundled connections.
+  stats.forEach((report) => {
+    if (report.type === "transport" && !activeCandidatePair) {
+      activeCandidatePair = stats.get(report.selectedCandidatePairId);
+    }
+  });
+
+  const candidateElement =
+    peerConnectionElement.getElementsByClassName("candidatepair")[0]
+      .firstElementChild;
+  if (activeCandidatePair) {
+    if (activeCandidatePair.remoteCandidateId) {
+      remoteCandidate = stats.get(activeCandidatePair.remoteCandidateId);
+    }
+    if (activeCandidatePair.localCandidateId) {
+      localCandidate = stats.get(activeCandidatePair.localCandidateId);
+    }
+    if (
+      localCandidate &&
+      localCandidate.address &&
+      localCandidate.address.indexOf(":") !== -1
+    ) {
+      // Show IPv6 in []
+      candidateElement.innerText =
+        "[" +
+        localCandidate.address +
+        "]:" +
+        localCandidate.port +
+        " <=> [" +
+        remoteCandidate.address +
+        "]:" +
+        remoteCandidate.port;
+    } else {
+      candidateElement.innerText =
+        localCandidate.address +
+        ":" +
+        localCandidate.port +
+        " <=> " +
+        remoteCandidate.address +
+        ":" +
+        remoteCandidate.port;
+    }
+
+    // Mark active local-candidate, remote candidate and candidate pair
+    // bold in the table.
+    const statsContainer = document.getElementById(
+      peerConnectionElement.id + "-table-container"
+    );
+    const activeConnectionClass = "stats-table-active-connection";
+    statsContainer.childNodes.forEach((node) => {
+      if (node.nodeName !== "DETAILS") {
+        return;
+      }
+      const innerText = node.firstElementChild.innerText;
+      if (
+        innerText.startsWith(activeCandidatePair.id) ||
+        innerText.startsWith(localCandidate.id) ||
+        innerText.startsWith(remoteCandidate.id)
+      ) {
+        node.firstElementChild.classList.add(activeConnectionClass);
+      } else {
+        node.firstElementChild.classList.remove(activeConnectionClass);
+      }
+    });
+    // Mark active candidate-pair graph bold.
+    const statsGraphContainers = peerConnectionElement.getElementsByClassName(
+      "stats-graph-container"
+    );
+    for (let i = 0; i < statsGraphContainers.length; i++) {
+      const node = statsGraphContainers[i];
+      if (node.nodeName !== "DETAILS") {
+        continue;
+      }
+      if (!node.id.startsWith(pcId + "-candidate-pair")) {
+        continue;
+      }
+      if (
+        node.id ===
+        pcId + "-candidate-pair-" + activeCandidatePair.id + "-graph-container"
+      ) {
+        node.firstElementChild.classList.add(activeConnectionClass);
+      } else {
+        node.firstElementChild.classList.remove(activeConnectionClass);
+      }
+    }
+  } else {
+    candidateElement.innerText = "(not connected)";
+  }
+
+  updateIceCandidateGrid(peerConnectionElement, r.statsById);
+}
+
+/**
+ * Handles the report of stats originating from the legacy getStats() API.
+ *
+ * @param {!Object} data The object containing rid, lid, and reports, where
+ *     reports is an array of stats reports. Each report contains id, type,
+ *     and stats, where stats is the object containing timestamp and values,
+ *     which is an array of strings, whose even index entry is the name of the
+ *     stat, and the odd index entry is the value.
+ */
+function addLegacyStats(data) {
+  if (currentGetStatsMethod != OPTION_GETSTATS_LEGACY) {
+    return; // Obsolete!
+  }
+  const peerConnectionElement = $(getPeerConnectionId(data));
+  if (!peerConnectionElement) {
+    return;
+  }
+
+  for (let i = 0; i < data.reports.length; ++i) {
+    const report = data.reports[i];
+    statsTable.addStatsReport(peerConnectionElement, report);
+    drawSingleReport(peerConnectionElement, report, true);
   }
 }
 

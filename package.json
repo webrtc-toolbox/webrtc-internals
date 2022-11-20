@@ -1,17 +1,25 @@
 {
-  "name": "webrtc-internals-safari",
+  "name": "webrtc-internals",
   "version": "1.0.0",
   "type": "module",
-  "description": "webrtc-internals in safari by stay",
+  "description": "webrtc-internals anywhere",
   "main": "src/index.js",
   "author": "xsm",
   "license": "MIT",
-  "repository": {},
+  "repository": {
+    "type": "github",
+    "url": "https://github.com/ltsg123/webrtc-internals-safari"
+  },
   "scripts": {
+    "dev": "rollup --config -w",
     "build": "rollup --config"
   },
-  "dependencies": {},
+  "dependencies": {
+    "webrtc-adapter": "^8.2.0"
+  },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^23.0.2",
+    "@rollup/plugin-node-resolve": "^15.0.1",
     "rollup": "^3.3.0"
   }
 }
