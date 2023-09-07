@@ -38,3 +38,9 @@ http-sever
 工具已引入了 webrtc-adapter，但还是有部分其他浏览器与 chrome 差异造成的问题，如下：
 
 1.safari/firefox 在 ICE Candidate pair/grid 上数据存在局限性，（可通过观察 sdp 判断 candidate）
+
+# 2023 年 9 月 8 日
+
+对于一些低端机型，性能会导致很卡顿，补充了 local / remote 模式，将本地数据传输给对端，所有数据由对端展示
+
+补充 yarn server 命令，websocket 服务搭建

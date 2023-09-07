@@ -1,25 +1,112 @@
-import "webrtc-adapter";
-import { initUI } from "./remote/html";
-import "./remote/css";
-import "./remote/inject";
+import {
+  addPeerConnection,
+  addGetUserMedia,
+  addStats,
+  addPeerConnectionUpdate,
+  getPeerConnectionId,
+} from "./webrtc-internals";
+import { $ } from "./utils";
+import { getParameter } from "./config/config";
 
-import { initialize } from "./remote/webrtc-internals";
-import { trace } from "./remote/inject";
+const pid = Math.random().toString(36).substr(2, 10);
+export function initWebsocket(url) {
+  if (!url) {
+    console.error("url is empty");
+    return;
+  }
+  const ws = new WebSocket(url);
+  ws.onopen = () => {
+    ws.send("receive");
+    console.log("connect to ws", ws.url);
+  };
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    trace(data.method, data.id, data.args);
+  };
+}
 
-const AgoraRTCInternals = {
-  start: () => {
-    initUI(true);
-    initialize();
-    createWebUIEvents();
-  },
-  statsUpdateInterval: 1000,
-};
+export function trace(method, id, args) {
+  const url = location.href;
+  // emulate webrtc-internals format
+  let data = { lid: id, pid, type: method, time: Date.now() };
+  data.value = args;
+  switch (method) {
+    case "create":
+      data.url = url;
+      data.rtcConfiguration = args[0];
+      data.constraints = JSON.stringify(args[1]);
+      addPeerConnection(data);
+      break;
+    case "navigator.mediaDevices.getUserMedia":
+    case "navigator.getUserMedia":
+      data = {
+        rid: 0,
+        pid: pid,
+        origin: url,
+        audio: JSON.stringify(args.audio),
+        video: JSON.stringify(args.video),
+        getUserMediaId: id,
+      };
+      addGetUserMedia(data);
+      break;
+    case "navigator.mediaDevices.getUserMediaOnSuccess":
+    case "navigator.mediaDevices.getUserMediaOnFailure":
+    case "navigator.getUserMediaOnSuccess":
+    case "navigator.getUserMediaFailure":
+      // TODO: find a way to display them.
+      break;
+    case "getStats":
+      // webrtc-internals uses a weird format for the stats...
+      data.reports = [];
+      Object.keys(args).forEach(function (reportName) {
+        var report = args[reportName];
+        var values = [];
+        Object.keys(report).forEach(function (statName) {
+          if (statName === "timestamp") {
+            return;
+          }
+          values.push(statName);
+          values.push(report[statName]);
+        });
 
-window.AgoraRTCInternals = AgoraRTCInternals;
-export default AgoraRTCInternals;
+        data.reports.push({
+          type: report.type,
+          id: report.id,
+          stats: {
+            timestamp: report.timestamp,
+            values: values,
+          },
+        });
+      });
+      if (navigator.userAgent.indexOf("Edge") === -1) {
+        addStats(data);
+      }
+      break;
+    case "createOfferOnSuccess":
+    case "setLocalDescription":
+    case "setRemoteDescription":
+      data.value = "type: " + args.type + ", sdp:\n" + args.sdp;
+    // fall through
+    default:
+      addPeerConnectionUpdate($(getPeerConnectionId(data)), data);
+  }
+}
+
+// transforms a maplike to an object. Mostly for getStats +
+// JSON.parse(JSON.stringify())
+function map2obj(m) {
+  if (!m.entries) {
+    return m;
+  }
+  var o = {};
+  m.forEach(function (v, k) {
+    o[k] = v;
+  });
+  return o;
+}
 
 // create listeners for all the updates that get sent from RTCPeerConnection.
-function createWebUIEvents() {
+export function createWebUIEvents() {
   let id = 0;
   const origPeerConnection = window.RTCPeerConnection;
   if (!origPeerConnection) {
@@ -28,7 +115,7 @@ function createWebUIEvents() {
 
   // Rewrite RTCPeerConnection
   window.RTCPeerConnection = function () {
-    const pc = new origPeerConnection(...arguments);
+    const pc = new origPeerConnection(arguments[0], arguments[1]);
     pc._id = id++;
     trace("create", pc._id, arguments);
 
@@ -91,14 +178,14 @@ function createWebUIEvents() {
 
     window.setTimeout(function poll() {
       if (pc.connectionState !== "closed") {
-        window.setTimeout(poll, AgoraRTCInternals.statsUpdateInterval);
+        window.setTimeout(poll, getParameter("stats_update_interval"));
       } else {
         trace("connectionstatechange", pc._id, pc.connectionState);
       }
       pc.getStats().then(function (stats) {
         trace("getStats", pc._id, map2obj(stats));
       });
-    }, AgoraRTCInternals.statsUpdateInterval);
+    }, getParameter("stats_update_interval"));
     return pc;
   };
 
@@ -291,15 +378,73 @@ function createWebUIEvents() {
   // transceiverModified to do@xiaoshumin，暂时没有好办法， 除了监听对象，目前看功能没有必要
 }
 
-// transforms a maplike to an object. Mostly for getStats +
-// JSON.parse(JSON.stringify())
-function map2obj(m) {
-  if (!m.entries) {
-    return m;
-  }
-  var o = {};
-  m.forEach(function (v, k) {
-    o[k] = v;
-  });
-  return o;
+function dumpStream(stream) {
+  return {
+    id: stream.id,
+    tracks: stream.getTracks().map(function (track) {
+      return {
+        id: track.id, // unique identifier (GUID) for the track
+        kind: track.kind, // `audio` or `video`
+        label: track.label, // identified the track source
+        enabled: track.enabled, // application can control it
+        muted: track.muted, // application cannot control it (read-only)
+        readyState: track.readyState, // `live` or `ended`
+      };
+    }),
+  };
 }
+var origGetUserMedia;
+var gum;
+if (navigator.getUserMedia) {
+  origGetUserMedia = navigator.getUserMedia.bind(navigator);
+  gum = function () {
+    var id = Math.random().toString(36).substr(2, 10);
+    trace("getUserMedia", id, arguments[0]);
+    var cb = arguments[1];
+    var eb = arguments[2];
+    origGetUserMedia(
+      arguments[0],
+      function (stream) {
+        // we log the stream id, track ids and tracks readystate since that is ended GUM fails
+        // to acquire the cam (in chrome)
+        trace("getUserMediaOnSuccess", id, dumpStream(stream));
+        if (cb) {
+          cb(stream);
+        }
+      },
+      function (err) {
+        trace("getUserMediaOnFailure", id, err.name);
+        if (eb) {
+          eb(err);
+        }
+      }
+    );
+  };
+  navigator.getUserMedia = gum.bind(navigator);
+}
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(
+    navigator.mediaDevices
+  );
+  gum = function () {
+    var id = Math.random().toString(36).substr(2, 10);
+    trace("navigator.mediaDevices.getUserMedia", id, arguments[0]);
+    return origGetUserMedia.apply(navigator.mediaDevices, arguments).then(
+      function (stream) {
+        trace(
+          "navigator.mediaDevices.getUserMediaOnSuccess",
+          id,
+          dumpStream(stream)
+        );
+        return stream;
+      },
+      function (err) {
+        trace("navigator.mediaDevices.getUserMediaOnFailure", id, err.name);
+        return Promise.reject(err);
+      }
+    );
+  };
+  navigator.mediaDevices.getUserMedia = gum.bind(navigator.mediaDevices);
+}
+
+export default null;

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>webrtc-internal</title>
+    <style></style>
+  </head>
+
+  <body>
+    <script src="index.js"></script>
+    <script>
+      const userInput = prompt("请输入您的websocket地址：");
+      if (userInput !== null) {
+        AgoraRTCInternals.start(userInput);
+      } else {
+        // 用户点击了取消按钮或者弹窗被关闭
+        alert("您取消了操作或者没有输入数据。");
+      }
+    </script>
+  </body>
+</html>

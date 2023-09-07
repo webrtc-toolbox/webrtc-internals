@@ -1,7 +1,4 @@
-console.log("配置为", window.RTC_INTERNALS__PARAMS);
-// 关闭图像
-window.RTC_INTERNALS__PARAMS &&
-  (window.RTC_INTERNALS__PARAMS.open_graph = false);
+import { Peer } from "./peer.js";
 
 const localVideo = document.querySelector("#local-video");
 const remoteVideo = document.querySelector("#remote-video");
@@ -24,6 +21,14 @@ const localStream = {
   video: null,
   audio: null,
 };
+window.localStream = localStream;
+window.offerPeer = offerPeer;
+window.answerPeer = answerPeer;
+
+window.localVideo = localVideo;
+window.remoteVideo = remoteVideo;
+window.remoteAudio = remoteAudio;
+
 async function main() {
   let stream;
   stream = await navigator.mediaDevices.getUserMedia({
@@ -37,7 +42,7 @@ async function main() {
 }
 main();
 
-function startLive() {
+export function startLive() {
   offerPeer.startLive();
   button.style.display = "none";
 }
@@ -55,11 +60,11 @@ function close() {
   answerPeer.close();
 }
 
-function sub() {
+export function sub() {
   offerPeer.startLive();
 }
 
-function unsub() {
+export function unsub() {
   answerPeer.peer.getTransceivers().forEach((tr) => {
     if (tr.receiver.track?.kind === "video") {
       return;

@@ -1,0 +1,14 @@
+{
+  "name": "internals-server",
+  "version": "1.0.0",
+  "description": "webrtc-internals server",
+  "main": "index.js",
+  "author": "xsm",
+  "license": "MIT",
+  "devDependencies": {
+    "ws": "^8.14.0",
+    "express": "^4.17.1",
+    "express-ws": "^4.0.0",
+    "ip": "^1.1.8"
+  }
+}

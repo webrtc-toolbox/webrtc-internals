@@ -101,7 +101,7 @@ export class PeerConnectionUpdateTable {
 
     if (update.type === "icecandidate" || update.type === "addIceCandidate") {
       // adapt RTCPeerConnection, diff from .cc
-      if (update.value instanceof RTCIceCandidate) {
+      if (update.value && update.value.candidate) {
         update.value = update.value.candidate;
       }
       // extract ICE candidate type from the field following typ.

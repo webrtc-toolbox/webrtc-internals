@@ -1,13 +1,15 @@
+import "../../dist/index.js";
+AgoraRTCInternals.start();
+
 const PeerConnection =
   self.RTCPeerConnection ||
   self.mozRTCPeerConnection ||
   self.webkitRTCPeerConnection;
 !PeerConnection && this.error("浏览器不支持WebRTC！");
 
-const isUseWebAudio = false;
 let isFirst = true;
 
-class Peer {
+export class Peer {
   peer = new PeerConnection();
   localVideoTrack;
   constructor(type, element) {
@@ -15,24 +17,6 @@ class Peer {
     this.audioEl.autoplay = true;
     this.type = type;
     this.element = element;
-    this.peer.ontrack = (e) => {
-      if (e && e.streams) {
-        //   console.error(e.streams.forEach((st) => console.log(st)));
-        // this.log("收到对方音频/视频流数据...");
-        //   element.srcObject = e.streams[0];
-      }
-      // const transceiver = this.peer.getTransceivers();
-      // transceiver.forEach((tr) => {
-      //   if (tr.receiver.track.kind === "video") {
-      //     console.error(tr.receiver.track);
-      //     element.srcObject = new MediaStream([tr.receiver.track]);
-      //   } else {
-      //     console.error(this.audioEl);
-      //     // this.audioEl.srcObject = new MediaStream([tr.receiver.track]);
-      //   }
-      // });
-      // console.error("receive", transceiver);
-    };
 
     this.peer.onicecandidate = (e) => {
       if (e.candidate) {
@@ -44,9 +28,6 @@ class Peer {
         }
       } else {
         this.log("候选人收集完成！");
-        // if (this.type === "answer") {
-        //   this.getReceiver();
-        // }
       }
     };
   }

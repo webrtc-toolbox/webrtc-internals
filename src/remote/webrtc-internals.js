@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 import { $ } from "./utils";
-import { createWebUIEvents } from "./inject";
 import { PeerConnectionUpdateTable } from "./peer_connection_update_table";
 import {
   DumpCreator,
@@ -23,6 +22,7 @@ import {
   removeStatsReportGraphs,
 } from "./stats_graph_helper.js";
 import { getParameter } from "./config/config";
+import { initWebsocket } from "./inject";
 
 const USER_MEDIA_TAB_ID = "user-media-tab-id";
 
@@ -875,7 +875,9 @@ function getSsrcReportType(report) {
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-export function initialize() {
+export function initialize(url) {
+  url && initWebsocket(url);
+
   const root = $("content-root");
   if (root === null) {
     return;
@@ -886,8 +888,6 @@ export function initialize() {
   ssrcInfoManager = new SsrcInfoManager();
   peerConnectionUpdateTable = new PeerConnectionUpdateTable();
   statsTable = new StatsTable(ssrcInfoManager);
-
-  createWebUIEvents();
 }
 
 function createStatsSelectionOptionElements() {

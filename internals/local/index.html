@@ -82,11 +82,20 @@
       <div class="video-box">
         <video id="remote-video" autoplay muted></video>
         <video id="local-video" autoplay muted></video>
-        <button class="start-button" onclick="startLive()">start</button>
+        <audio id="remote-audio" autoplay></audio>
+        <button id="startLive" class="start-button">start</button>
       </div>
     </div>
-    <script src="../dist/index.js"></script>
-    <script src="peer.js"></script>
-    <script src="index.js"></script>
+    <div>functions:</div>
+    <div>
+      <button id="sub">sub</button>
+      <button id="unsub">unsub</button>
+    </div>
+    <script type="module">
+      import { startLive, sub, unsub } from "./index.js";
+      document.getElementById("startLive").addEventListener("click", startLive);
+      document.getElementById("sub").addEventListener("click", sub);
+      document.getElementById("unsub").addEventListener("click", unsub);
+    </script>
   </body>
 </html>

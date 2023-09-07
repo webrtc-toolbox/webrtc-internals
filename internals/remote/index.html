@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>webrtc-internal</title>
+    <style></style>
+  </head>
+
+  <body>
+    <script type="module">
+      import "../../dist/remote/index.js";
+      AgoraRTCInternals.start("ws://localhost:8043");
+      // AgoraRTCInternals.start("wss://10.93.0.47:8043");
+    </script>
+  </body>
+</html>
