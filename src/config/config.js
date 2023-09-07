@@ -8,7 +8,7 @@ export function setParameter(key, value) {
 
 const _PARAMS = {
   // 实时图像， 关闭可以减少一定性能占用
-  open_graph: true,
+  open_graph: false,
   // 更新数据间隔， 间隔越大，损耗越小
   stats_update_interval: 1000,
   // container
