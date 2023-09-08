@@ -9,10 +9,10 @@ const myip = ip.address();
 // you'll probably load configuration from config
 const cfg = {
   ssl: true,
-  port: 8080,
+  port: 8043,
   host: myip,
-  ssl_key: "./server/ssl.key",
-  ssl_cert: "./server/ssl.crt",
+  ssl_key: "./ssl.key",
+  ssl_cert: "./ssl.crt",
 };
 
 const httpServ = cfg.ssl ? require("https") : require("http");
@@ -60,18 +60,23 @@ wss.on("connection", function (wsConnect) {
       cache.push(message);
       return;
     }
-    const client = Array.from(wsMap.entries())[0][0];
-    if (cache.length > 0) {
-      cache.forEach((msg) => {
-        // console.log("send cache message", msg.toString());
-        client.send(msg.toString());
+
+    cache.forEach((msg) => {
+      Array.from(wsMap.entries()).forEach(([client, _]) => {
+        if (client.readyState === 1) {
+          // console.log("send message", message.toString());
+          client.send(msg.toString());
+        }
       });
-      cache.length = 0;
-    }
-    if (client.readyState === 1) {
-      // console.log("send message", message.toString());
-      client.send(message.toString());
-    }
+    });
+    cache.length = 0;
+
+    Array.from(wsMap.entries()).forEach(([client, _]) => {
+      if (client.readyState === 1) {
+        // console.log("send message", message.toString());
+        client.send(message.toString());
+      }
+    });
   });
   wsConnect.on("close", function () {
     console.log(`close connection, current client size is ${wss.clients.size}`);

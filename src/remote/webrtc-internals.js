@@ -967,6 +967,10 @@ function appendChildWithText(parent, tag, text) {
  * @param {!PeerConnectionUpdateEntry} update The peer connection update data.
  */
 export function addPeerConnectionUpdate(peerConnectionElement, update) {
+  if (!peerConnectionElement || !peerConnectionElement.id) {
+    console.log("addPeerConnectionUpdate: invalid peerConnectionElement");
+    return;
+  }
   peerConnectionUpdateTable.addPeerConnectionUpdate(
     peerConnectionElement,
     update
@@ -983,7 +987,7 @@ export function addPeerConnectionUpdate(peerConnectionElement, update) {
  * @param {!Object<number>} data The object containing the pid and lid of a peer
  *     connection.
  */
-function removePeerConnection(data) {
+export function removePeerConnection(data) {
   var element = $(getPeerConnectionId(data));
   if (element) {
     delete peerConnectionDataStore[element.id];

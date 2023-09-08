@@ -3,6 +3,7 @@ import {
   addGetUserMedia,
   addStats,
   addPeerConnectionUpdate,
+  removePeerConnection,
   getPeerConnectionId,
 } from "./webrtc-internals";
 import { $ } from "./utils";
@@ -21,12 +22,12 @@ export function initWebsocket(url) {
   };
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
-    trace(data.method, data.id, data.args);
+    trace(data.method, data.id, data.args, data.href);
   };
 }
 
-export function trace(method, id, args) {
-  const url = location.href;
+export function trace(method, id, args, href) {
+  const url = href ?? location.href;
   // emulate webrtc-internals format
   let data = { lid: id, pid, type: method, time: Date.now() };
   data.value = args;
@@ -81,6 +82,9 @@ export function trace(method, id, args) {
       if (navigator.userAgent.indexOf("Edge") === -1) {
         addStats(data);
       }
+      break;
+    case "close":
+      removePeerConnection(data);
       break;
     case "createOfferOnSuccess":
     case "setLocalDescription":

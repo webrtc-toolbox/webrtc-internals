@@ -304,6 +304,7 @@ function trace(method, id, args) {
     method,
     id,
     args,
+    href: location.href,
   };
   if (ws && ws.readyState === 1) {
     if (sendParamsCache.length > 0) {

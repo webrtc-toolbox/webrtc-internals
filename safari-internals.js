@@ -3870,6 +3870,9 @@
     // create listeners for all the updates that get sent from RTCPeerConnection.
     function createWebUIEvents(url) {
       ws = new WebSocket(url);
+      ws.onopen = () => {
+        // ws.send("send");
+      };
       let id = Math.random().toString(16);
       const origPeerConnection = window.RTCPeerConnection;
       if (!origPeerConnection) {
@@ -3879,8 +3882,8 @@
       // Rewrite RTCPeerConnection
       window.RTCPeerConnection = function () {
         const pc = new origPeerConnection(...arguments);
-        console.error("pc", id);
         pc._id = Math.random().toString(16);
+        console.error("pc", id);
         trace("create", pc._id, arguments);
 
         pc.addEventListener("icecandidate", function (e) {
@@ -4170,6 +4173,7 @@
         method,
         id,
         args,
+        href: location.href,
       };
       if (ws && ws.readyState === 1) {
         if (sendParamsCache.length > 0) {

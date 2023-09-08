@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "rollup --config -w",
     "build": "rm -rf dist/* && rollup --config && cp public/* dist/remote/",
-    "server": "node ./server/index.js"
+    "server": "node ./server/dist/index.js"
   },
   "dependencies": {
     "webrtc-adapter": "^8.2.0"
