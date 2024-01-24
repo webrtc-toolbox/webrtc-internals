@@ -1,6 +1,6 @@
 {
   "name": "webrtc-internals-adapter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "webrtc-internals anywhere",
   "main": "index.js",
   "author": "xsm",

@@ -11,17 +11,17 @@ Usage:
 2, for safari/firefox/mobile, demo integration, you can place it under the body, <script src="webrtc-internals.js"></script>, add under the body on it!
 
 Example image:
-! [safari](. /img/demo_1.jpg)
-! [ios](. /img/demo_2.jpg)
-! [ios](. /img/demo_3.jpg)
+![safari](./img/demo_1.jpg)
+![ios](./img/demo_2.jpg)
+![ios](./img/demo_3.jpg)
 
-# build
+## build
 
 yarn
 
 yarn build
 
-# dev
+## dev
 
 yarn
 
@@ -29,29 +29,33 @@ yarn dev
 
 http-sever
 
-# config
+## config
 
 Configuration parameters are stored in the window RTC_INTERNALS\_\_PARAMS and can be changed/referenced directly.
 
-# ⚠️
+## ⚠️
 
 Since it involves changing the PC prototype method, it must be loaded before the pc is built or it will fail!!!
 
-# Known limitations
+## Known limitations
 
 The tool has introduced the webrtc-adapter, but there are still some issues caused by differences between other browsers and chrome, as follows:
 
 1. safari/firefox has limitations on ICE Candidate pair/grid data, (can judge candidate by looking at sdp)
 
-# release/1.0.0
+## Install
 
-npm install
-npm install webrtc-internals
+Use `npm`
 
-import "webrtc-internals".
+```
+# with npm
+npm i webrtc-internals-adapter
+```
 
-cdn import
+CDN is also provided
 
+```
 <script src="https://ltsg123.github.io/webrtc-internals/dist/index.js"></script>
+```
 
 Any questions you can contact me at ltsg0317@outlook.com

@@ -15,13 +15,13 @@ demo: https://ltsg123.github.io/webrtc-internals/
 ![ios](./img/demo_2.jpg)
 ![ios](./img/demo_3.jpg)
 
-# build
+## build
 
 yarn
 
 yarn build
 
-# dev
+## dev
 
 yarn
 
@@ -29,29 +29,33 @@ yarn dev
 
 http-sever
 
-# config
+## config
 
 配置参数存储在 window 下 RTC_INTERNALS_PARAMS，可以直接需改/引用
 
-# ⚠️
+## ⚠️
 
 因为会涉及更改 PC 原型方法，必须在 pc 建立前加载，否则会失效！！！
 
-# 已知局限性
+## 已知局限性
 
 工具已引入了 webrtc-adapter，但还是有部分其他浏览器与 chrome 差异造成的问题，如下：
 
 1.safari/firefox 在 ICE Candidate pair/grid 上数据存在局限性，（可通过观察 sdp 判断 candidate）
 
-# release/1.0.0
+## Install
 
-npm 引入
-npm install webrtc-internals
+Use `npm`
 
-import "webrtc-internals";
+```
+# with npm
+npm i webrtc-internals-adapter
+```
 
-cdn 引入
+CDN is also provided
 
+```
 <script src="https://ltsg123.github.io/webrtc-internals/dist/index.js"></script>
+```
 
-任何问题可以联系我：ltsg0317@outlook.com
+Any questions you can contact me at ltsg0317@outlook.com
