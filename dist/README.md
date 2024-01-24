@@ -10,28 +10,9 @@ Usage:
 
 2, for safari/firefox/mobile, demo integration, you can place it under the body, <script src="webrtc-internals.js"></script>, add under the body on it!
 
-Example image:
-! [safari](. /img/demo_1.jpg)
-! [ios](. /img/demo_2.jpg)
-! [ios](. /img/demo_3.jpg)
-
-# build
-
-yarn
-
-yarn build
-
-# dev
-
-yarn
-
-yarn dev
-
-http-sever
-
 # config
 
-Configuration parameters are stored in the window RTC_INTERNALS\_\_PARAMS and can be changed/referenced directly.
+Configuration parameters are stored in the window RTC_INTERNALS_PARAMS and can be changed/referenced directly.
 
 # ⚠️
 

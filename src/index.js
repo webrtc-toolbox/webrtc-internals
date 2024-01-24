@@ -14,5 +14,4 @@ import "./inject";
 
 import { initialize } from "./webrtc-internals";
 
-// // document.addEventListener('DOMContentLoaded', initialize);
 initialize();

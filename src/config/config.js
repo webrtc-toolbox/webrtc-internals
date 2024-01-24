@@ -15,4 +15,4 @@ const _PARAMS = {
   container: null,
 };
 
-window.RTC_INTERNALS__PARAMS = _PARAMS;
+window.RTC_INTERNALS_PARAMS = _PARAMS;

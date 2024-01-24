@@ -1,0 +1,17 @@
+{
+  "name": "webrtc-internals-adapter",
+  "version": "1.0.0",
+  "description": "webrtc-internals anywhere",
+  "main": "index.js",
+  "author": "xsm",
+  "license": "MIT",
+  "repository": {
+    "type": "github",
+    "url": "https://github.com/ltsg123/webrtc-internals"
+  },
+  "keywords": [
+    "WebRTC",
+    "WebRTC-internals"
+  ],
+  "homepage": "https://ltsg123.github.io/webrtc-internals/"
+}
